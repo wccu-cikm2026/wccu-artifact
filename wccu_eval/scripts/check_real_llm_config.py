@@ -11,7 +11,7 @@ from wccu_eval.utils import clean
 
 PLACEHOLDER_MARKERS = (
     'your-key',
-    'sk-your-key',
+    'YOUR_OPENAI_API_KEY',
     'your-gemini-key',
     'changeme',
     'replace-me',

@@ -7,12 +7,80 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from wccu_eval.agents.llm_output_schema import LLM_WRITE_INTENT_JSON_SCHEMA, OUTPUT_SCHEMA_VERSION, normalize_llm_output, parse_json_object_from_text, schema_instruction_text
+from wccu_eval.agents.llm_output_schema import LLM_WRITE_INTENT_JSON_SCHEMA, OUTPUT_SCHEMA_VERSION, gemini_compatible_schema, normalize_llm_output, parse_json_object_from_text, schema_instruction_text
 from wccu_eval.env import load_dotenv
 from wccu_eval.scheduler.target_grounder import target_candidates_for_scenario
 from wccu_eval.utils import append_jsonl, as_dict, as_list, clean, estimate_tokens, now_iso, stable_hash
 
 DEFAULT_TIMEOUT_SECONDS = 90
+
+
+def parse_agent_model_specs(value: Any) -> dict[str, dict[str, str]]:
+    """Parse per-agent model routing specs.
+
+    Accepted forms:
+      - "coop_agent_a=openai:gpt-5.4-nano,coop_agent_b=gemini:gemini-3.1-flash-lite"
+      - "coop_agent_a:openai:gpt-5.4-nano;coop_agent_b:gemini:gemini-3.1-flash-lite"
+      - {"coop_agent_a": {"provider": "openai", "model": "..."}, ...}
+
+    Keys are matched against agent id first, then role, then "*" / "default".
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        out: dict[str, dict[str, str]] = {}
+        for key, raw in value.items():
+            k = clean(key)
+            if not k:
+                continue
+            if isinstance(raw, dict):
+                provider = clean(raw.get('provider'))
+                model = clean(raw.get('model'))
+            else:
+                token = clean(raw)
+                if ':' not in token:
+                    continue
+                provider, model = [clean(x) for x in token.split(':', 1)]
+            if provider and model:
+                out[k] = {'provider': provider, 'model': model}
+        return out
+    spec = clean(value)
+    if not spec:
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for raw_entry in spec.replace(';', ',').split(','):
+        entry = clean(raw_entry)
+        if not entry:
+            continue
+        if '=' in entry:
+            key, rhs = entry.split('=', 1)
+        else:
+            parts = entry.split(':', 2)
+            if len(parts) != 3:
+                continue
+            key, rhs = parts[0], f'{parts[1]}:{parts[2]}'
+        key = clean(key)
+        if ':' not in rhs:
+            continue
+        provider, model = [clean(x) for x in rhs.split(':', 1)]
+        if key and provider and model:
+            out[key] = {'provider': provider, 'model': model}
+    return out
+
+
+def agent_model_override(agent: dict[str, Any], cfg: dict[str, Any]) -> dict[str, str]:
+    specs = parse_agent_model_specs(
+        cfg.get('agent_model_specs')
+        or cfg.get('agent_models')
+        or os.environ.get('WCCU_AGENT_MODEL_SPECS')
+        or os.environ.get('LLM_AGENT_MODEL_SPECS')
+    )
+    agent_id = clean(agent.get('id') or agent.get('role') or 'agent')
+    role = clean(agent.get('role') or agent_id)
+    for key in (agent_id, role, '*', 'default'):
+        if key in specs:
+            return specs[key]
+    return {}
 
 
 def default_llm_agent_task(*, scenario: dict[str, Any], agent: dict[str, Any]) -> str:
@@ -424,13 +492,21 @@ def call_llm_provider(*, provider: str = '', model: str = '', prompt: str = '', 
         base = base_url or os.environ.get('GEMINI_BASE_URL') or 'https://generativelanguage.googleapis.com/v1beta'
         endpoint = f"{base.rstrip('/')}/models/{selected_model}:generateContent?key={key}"
         generation_config = {'temperature': temperature, 'maxOutputTokens': max_output_tokens, 'responseMimeType': 'application/json'}
-        if strict_schema:
-            generation_config['responseSchema'] = LLM_WRITE_INTENT_JSON_SCHEMA
+        gemini_schema_mode = clean(os.environ.get('GEMINI_RESPONSE_SCHEMA_MODE') or os.environ.get('LLM_GEMINI_RESPONSE_SCHEMA_MODE') or 'sanitize').lower()
+        if strict_schema and gemini_schema_mode not in {'none', 'off', 'false', '0'}:
+            if gemini_schema_mode in {'raw', 'openai', 'strict'}:
+                generation_config['responseSchema'] = LLM_WRITE_INTENT_JSON_SCHEMA
+                sent_schema_mode = 'raw_openai_strict'
+            else:
+                generation_config['responseSchema'] = gemini_compatible_schema(LLM_WRITE_INTENT_JSON_SCHEMA)
+                sent_schema_mode = 'gemini_sanitized'
+        else:
+            sent_schema_mode = 'none'
         payload = _post_json(endpoint, body={'contents': [{'role': 'user', 'parts': [{'text': prompt}]}], 'generationConfig': generation_config}, timeout_seconds=timeout_seconds, provider=provider, endpoint='generateContent', request_metadata=request_metadata, max_provider_retries=max_provider_retries, retry_backoff_base=retry_backoff_base, retry_backoff_max=retry_backoff_max, error_log_path=error_log_path)
         text = clean('\n'.join(part.get('text', '') for part in (payload.get('candidates') or [{}])[0].get('content', {}).get('parts', [])))
         if not text:
             raise RuntimeError('Gemini API returned no candidate text')
-        return {'text': text, 'raw': payload, 'endpoint': 'generateContent', 'http': payload.get('_pcse_http', {})}
+        return {'text': text, 'raw': payload, 'endpoint': 'generateContent', 'request_options': {'response_schema_mode': sent_schema_mode, 'strict_schema': bool(strict_schema)}, 'http': payload.get('_pcse_http', {})}
     raise RuntimeError(f'Unsupported LLM provider: {provider}')
 
 
@@ -439,8 +515,9 @@ def run_llm_agent(*, agent: dict[str, Any], projection: dict[str, Any], scenario
     cfg = llm_config or {}
     agent_id = clean(agent.get('id') or agent.get('role') or 'agent')
     role = clean(agent.get('role') or agent_id)
-    provider = clean(cfg.get('provider') or os.environ.get('LLM_PROVIDER') or 'openai')
-    model = clean(cfg.get('model') or os.environ.get('LLM_MODEL') or (os.environ.get('GEMINI_MODEL') if provider == 'gemini' else os.environ.get('OPENAI_MODEL')) or '')
+    model_override = agent_model_override(agent, cfg)
+    provider = clean(model_override.get('provider') or cfg.get('provider') or os.environ.get('LLM_PROVIDER') or 'openai')
+    model = clean(model_override.get('model') or cfg.get('model') or os.environ.get('LLM_MODEL') or (os.environ.get('GEMINI_MODEL') if provider == 'gemini' else os.environ.get('OPENAI_MODEL')) or '')
     temperature = cfg.get('temperature')
     if temperature is None or clean(temperature).lower() in {'', 'none', 'omit'}:
         temperature = None
@@ -466,7 +543,7 @@ def run_llm_agent(*, agent: dict[str, Any], projection: dict[str, Any], scenario
     last_raw_text = ''
     for attempt in range(max_parse_retries + 1):
         repair_suffix = '' if attempt == 0 else f"\n\n[REPAIR REQUIRED]\nThe previous response could not be parsed or validated: {last_error}\nReturn a corrected JSON object only.\n{last_raw_text[:4000]}"
-        provider_call_cfg = {k: v for k, v in cfg.items() if k not in {'provider', 'model', 'prompt', 'scenario', 'agent', 'temperature', 'max_output_tokens', 'maxOutputTokens', 'timeout_seconds', 'timeoutMs', 'max_parse_retries', 'maxParseRetries', 'max_provider_retries', 'maxProviderRetries', 'retry_backoff_base', 'retry_backoff_max', 'error_log_path', 'enable_target_grounding', 'enable_target_candidates', 'certificate_guidance', 'witness_compiler_enabled', 'witness_attach_to_all_intents', 'witness_source_label'}}
+        provider_call_cfg = {k: v for k, v in cfg.items() if k not in {'provider', 'model', 'agent_model_specs', 'agent_models', 'prompt', 'scenario', 'agent', 'temperature', 'max_output_tokens', 'maxOutputTokens', 'timeout_seconds', 'timeoutMs', 'max_parse_retries', 'maxParseRetries', 'max_provider_retries', 'maxProviderRetries', 'retry_backoff_base', 'retry_backoff_max', 'error_log_path', 'enable_target_grounding', 'enable_target_candidates', 'certificate_guidance', 'witness_compiler_enabled', 'witness_attach_to_all_intents', 'witness_source_label'}}
         provider_result = call_llm_provider(**provider_call_cfg, provider=provider, model=model, prompt=prompt + repair_suffix, scenario=scenario, agent=agent, temperature=temperature, max_output_tokens=max_output_tokens, timeout_seconds=timeout_seconds, max_provider_retries=max_provider_retries, retry_backoff_base=retry_backoff_base, retry_backoff_max=retry_backoff_max, error_log_path=error_log_path)
         last_raw_text = provider_result['text']
         try:
@@ -483,7 +560,7 @@ def run_llm_agent(*, agent: dict[str, Any], projection: dict[str, Any], scenario
                 'write_intents': normalized['write_intents'],
                 'latency_ms': int((time.time() - started) * 1000),
                 'context_tokens': projection.get('metrics', {}).get('context_tokens', 0),
-                'llm': {'provider': provider, 'model': model, 'endpoint': provider_result.get('endpoint'), 'temperature': temperature, 'max_output_tokens': max_output_tokens, 'prompt_tokens_est': estimate_tokens(prompt), 'output_tokens_est': estimate_tokens(provider_result['text']), 'prompt_hash': stable_hash(prompt), 'schema_version': OUTPUT_SCHEMA_VERSION, 'parse_attempts': attempt + 1, 'request_options': {**provider_result.get('request_options', {}), 'enable_target_candidates': include_target_candidates, 'enable_target_grounding': cfg.get('enable_target_grounding', True), 'certificate_guidance': certificate_guidance}, 'api_usage': provider_result.get('usage', {}), 'provider_http': provider_result.get('http', {}), 'error_log_path': error_log_path},
+                'llm': {'provider': provider, 'model': model, 'endpoint': provider_result.get('endpoint'), 'temperature': temperature, 'max_output_tokens': max_output_tokens, 'prompt_tokens_est': estimate_tokens(prompt), 'output_tokens_est': estimate_tokens(provider_result['text']), 'prompt_hash': stable_hash(prompt), 'schema_version': OUTPUT_SCHEMA_VERSION, 'parse_attempts': attempt + 1, 'request_options': {**provider_result.get('request_options', {}), 'enable_target_candidates': include_target_candidates, 'enable_target_grounding': cfg.get('enable_target_grounding', True), 'certificate_guidance': certificate_guidance, 'mixed_provider_routing': bool(model_override)}, 'api_usage': provider_result.get('usage', {}), 'provider_http': provider_result.get('http', {}), 'error_log_path': error_log_path},
             }
         except Exception as exc:
             last_error = exc

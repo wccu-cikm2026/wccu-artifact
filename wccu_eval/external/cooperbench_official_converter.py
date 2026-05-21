@@ -443,7 +443,7 @@ def write_jsonl(rows: list[dict[str, Any]], out: str | Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description='Convert official/local CooperBench metadata into WCCU CooperBench-style JSONL.')
+    parser = argparse.ArgumentParser(description='Convert official/local CooperBench metadata into context-substrate CooperBench-style JSONL.')
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument('--input', help='Local CooperBench metadata file or extracted dataset directory.')
     src.add_argument('--hf-dataset', help='HuggingFace dataset id, e.g. CodeConflict/cooperbench-dataset.')

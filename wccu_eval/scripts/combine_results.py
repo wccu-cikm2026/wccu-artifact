@@ -61,7 +61,7 @@ def combine(paths: list[str | Path], *, out: str | Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description='Combine multiple WCCU result JSON files into one payload for multi-seed analysis.')
+    parser = argparse.ArgumentParser(description='Combine multiple context-substrate result JSON files into one payload for multi-seed analysis.')
     parser.add_argument('inputs', nargs='+')
     parser.add_argument('--out', required=True)
     args = parser.parse_args(argv)

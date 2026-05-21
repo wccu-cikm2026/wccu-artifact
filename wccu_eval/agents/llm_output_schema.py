@@ -192,6 +192,42 @@ def assert_openai_strict_schema(schema: dict[str, Any] = LLM_WRITE_INTENT_JSON_S
 
 assert_openai_strict_schema()
 
+def gemini_compatible_schema(schema: dict[str, Any] = LLM_WRITE_INTENT_JSON_SCHEMA) -> dict[str, Any]:
+    """Return a Gemini responseSchema-compatible subset of the strict schema.
+
+    The OpenAI-facing schema intentionally uses JSON Schema strictness fields such
+    as additionalProperties:false on every object. The Gemini REST
+    generationConfig.responseSchema endpoint accepts a smaller Schema proto subset
+    in some API versions and rejects additionalProperties even though newer
+    JSON-schema-oriented docs describe broader support. For provider portability we
+    keep the strict OpenAI schema as the canonical runtime contract, but strip
+    provider-unsupported keywords before sending the schema to Gemini. Local
+    validation still runs against the canonical schema after the model returns.
+    """
+
+    unsupported_keys = {
+        'additionalProperties',
+        '$schema',
+        '$defs',
+        'definitions',
+        'default',
+        'examples',
+    }
+
+    def convert(node: Any) -> Any:
+        if isinstance(node, dict):
+            out: dict[str, Any] = {}
+            for key, value in node.items():
+                if key in unsupported_keys:
+                    continue
+                out[key] = convert(value)
+            return out
+        if isinstance(node, list):
+            return [convert(item) for item in node]
+        return node
+
+    return convert(schema)
+
 
 def schema_instruction_text() -> str:
     return '\n'.join([

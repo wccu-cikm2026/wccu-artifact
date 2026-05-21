@@ -73,7 +73,7 @@ def parse_dotenv_text(text: str) -> dict[str, str]:
 
 
 def _candidate_env_paths(start: Path | None = None) -> Iterable[Path]:
-    env_file = os.environ.get('PCSE_ENV_FILE')
+    env_file = os.environ.get('WCCU_ENV_FILE') or os.environ.get('PCSE_ENV_FILE')
     if env_file:
         yield Path(env_file).expanduser()
         return
@@ -91,7 +91,7 @@ def _candidate_env_paths(start: Path | None = None) -> Iterable[Path]:
 def find_dotenv(start: str | Path | None = None) -> Path | None:
     """Find the first .env file from cwd upward, then the repo root.
 
-    Set PCSE_ENV_FILE=/path/to/file.env to force a specific file.
+    Set WCCU_ENV_FILE=/path/to/file.env to force a specific file. PCSE_ENV_FILE is also accepted for backward compatibility.
     """
     seen: set[Path] = set()
     for path in _candidate_env_paths(Path(start) if start is not None else None):
@@ -117,7 +117,7 @@ def load_dotenv(path: str | Path | None = None, *, override: bool = False, verbo
     dotenv_path = Path(path).expanduser() if path else find_dotenv()
     if not dotenv_path or not dotenv_path.exists():
         if verbose:
-            print(f'[pcse] no .env found (cwd={Path.cwd()})')
+            print(f'[wccu] no .env found (cwd={Path.cwd()})')
         return {}
     values = parse_dotenv_text(dotenv_path.read_text(encoding='utf-8'))
     loaded: dict[str, str] = {}
@@ -126,7 +126,7 @@ def load_dotenv(path: str | Path | None = None, *, override: bool = False, verbo
             os.environ[key] = value
             loaded[key] = value
     if verbose:
-        print(f'[pcse] loaded {len(loaded)} values from {dotenv_path}')
+        print(f'[wccu] loaded {len(loaded)} values from {dotenv_path}')
     return loaded
 
 

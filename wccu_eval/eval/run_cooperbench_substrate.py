@@ -25,7 +25,7 @@ def _condition_ids(value: str) -> list[str]:
     return selected_conditions(value)
 
 
-def run_cooperbench_substrate(*, input: str, condition: str = DEFAULT_CONDITIONS, repetitions: int = 1, limit: int = 0, out: str = 'results/cooperbench_substrate_results.json', provider: str = '', model: str = '', temperature: float | None = None, max_output_tokens: int = 1000, timeout_seconds: int = 90, max_parse_retries: int = 1, reasoning_effort: str = '', text_verbosity: str = '', send_temperature: bool | None = None, enable_target_grounding: bool = True, enable_target_candidates: bool = True, parallel_workers: int = 1, shuffle_cells: bool = False, max_provider_retries: int = 4, retry_backoff_base: float = 1.0, retry_backoff_max: float = 20.0, error_log: str = '', fail_fast: bool = False, certificate_guidance: str = 'guided') -> dict[str, Any]:
+def run_cooperbench_substrate(*, input: str, condition: str = DEFAULT_CONDITIONS, repetitions: int = 1, limit: int = 0, out: str = 'results/cooperbench_substrate_results.json', provider: str = '', model: str = '', temperature: float | None = None, max_output_tokens: int = 1000, timeout_seconds: int = 90, max_parse_retries: int = 1, reasoning_effort: str = '', text_verbosity: str = '', send_temperature: bool | None = None, enable_target_grounding: bool = True, enable_target_candidates: bool = True, parallel_workers: int = 1, shuffle_cells: bool = False, max_provider_retries: int = 4, retry_backoff_base: float = 1.0, retry_backoff_max: float = 20.0, error_log: str = '', fail_fast: bool = False, certificate_guidance: str = 'guided', agent_model_specs: str = '') -> dict[str, Any]:
     load_dotenv()
     provider = provider or os.environ.get('LLM_PROVIDER', 'openai')
     model = model or os.environ.get('LLM_MODEL', '')
@@ -63,6 +63,7 @@ def run_cooperbench_substrate(*, input: str, condition: str = DEFAULT_CONDITIONS
         'enable_target_candidates': enable_target_candidates,
         'error_log_path': str(error_log_path),
         'certificate_guidance': certificate_guidance,
+        'agent_model_specs': agent_model_specs or os.environ.get('WCCU_AGENT_MODEL_SPECS') or os.environ.get('LLM_AGENT_MODEL_SPECS') or '',
     }
     conditions = build_conditions(llm_config)
     cells: list[tuple[dict[str, Any], str, int]] = []
@@ -91,6 +92,11 @@ def run_cooperbench_substrate(*, input: str, condition: str = DEFAULT_CONDITIONS
             return {**row, 'failed': False, 'repetition': rep, 'external_benchmark': 'cooperbench', 'source_task_id': sc.get('source_task_id'), 'repo': sc.get('repo'), 'language': sc.get('language'), 'llm_experiment': {
                 'provider': provider,
                 'model': model or row.get('agentRuns', [{}])[0].get('llm', {}).get('model', ''),
+                'agent_model_specs': llm_config.get('agent_model_specs', ''),
+                'agents': [
+                    {'agent_id': a.get('agent_id'), 'provider': (a.get('llm') or {}).get('provider'), 'model': (a.get('llm') or {}).get('model')}
+                    for a in row.get('agentRuns', [])
+                ],
                 'temperature': temperature,
                 'max_output_tokens': max_output_tokens,
                 'max_parse_retries': max_parse_retries,
@@ -159,14 +165,14 @@ def run_cooperbench_substrate(*, input: str, condition: str = DEFAULT_CONDITIONS
                 append_jsonl(jsonl_path, row)
         results.sort(key=lambda r: (str(r.get('scenario_id')), str(r.get('condition')), int(r.get('repetition') or 0)))
     aggregated = _aggregate_llm(results)
-    payload = {'kind': 'context_substrate_external_eval_results_v1', 'external_benchmark': 'cooperbench', 'generated_at': now_iso(), 'args': {'input': input, 'condition': condition, 'repetitions': repetitions, 'limit': limit, 'out': out, 'provider': provider, 'model': model, 'temperature': temperature, 'max_output_tokens': max_output_tokens, 'reasoning_effort': reasoning_effort, 'text_verbosity': text_verbosity, 'send_temperature': send_temperature, 'enable_target_grounding': enable_target_grounding, 'enable_target_candidates': enable_target_candidates, 'parallel_workers': parallel_workers, 'shuffle_cells': shuffle_cells, 'max_provider_retries': max_provider_retries, 'retry_backoff_base': retry_backoff_base, 'retry_backoff_max': retry_backoff_max, 'error_log': str(error_log_path), 'fail_fast': fail_fast, 'certificate_guidance': certificate_guidance}, 'task_count': len(tasks), 'scenario_count': len(scenarios), 'results': results, 'aggregated': aggregated}
+    payload = {'kind': 'context_substrate_external_eval_results_v1', 'external_benchmark': 'cooperbench', 'generated_at': now_iso(), 'args': {'input': input, 'condition': condition, 'repetitions': repetitions, 'limit': limit, 'out': out, 'provider': provider, 'model': model, 'temperature': temperature, 'max_output_tokens': max_output_tokens, 'reasoning_effort': reasoning_effort, 'text_verbosity': text_verbosity, 'send_temperature': send_temperature, 'enable_target_grounding': enable_target_grounding, 'enable_target_candidates': enable_target_candidates, 'parallel_workers': parallel_workers, 'shuffle_cells': shuffle_cells, 'max_provider_retries': max_provider_retries, 'retry_backoff_base': retry_backoff_base, 'retry_backoff_max': retry_backoff_max, 'error_log': str(error_log_path), 'fail_fast': fail_fast, 'certificate_guidance': certificate_guidance, 'agent_model_specs': llm_config.get('agent_model_specs', '')}, 'task_count': len(tasks), 'scenario_count': len(scenarios), 'results': results, 'aggregated': aggregated}
     write_json(out_path, payload)
     return payload
 
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
-    parser = argparse.ArgumentParser(description='Run CooperBench-derived collaborative coding tasks through the WCCU context-store harness.')
+    parser = argparse.ArgumentParser(description='Run CooperBench-derived collaborative coding tasks through the WCCU context-substrate harness.')
     parser.add_argument('--input', required=True, help='CooperBench-style JSON/JSONL task file. See data/cooperbench_mini_sample.jsonl.')
     parser.add_argument('--condition', default=DEFAULT_CONDITIONS)
     parser.add_argument('--repetitions', type=int, default=1)
@@ -174,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--out', default='results/cooperbench_substrate_results.json')
     parser.add_argument('--provider', default=os.environ.get('LLM_PROVIDER', 'openai'))
     parser.add_argument('--model', default=os.environ.get('LLM_MODEL', ''))
+    parser.add_argument('--agent-model-specs', default=os.environ.get('WCCU_AGENT_MODEL_SPECS', '') or os.environ.get('LLM_AGENT_MODEL_SPECS', ''), help='Per-agent provider/model routing, e.g. coop_agent_a=openai:gpt-5.4-nano,coop_agent_b=gemini:gemini-3.1-flash-lite')
     parser.add_argument('--temperature', type=float, default=None)
     parser.add_argument('--send-temperature', action='store_true', default=None)
     parser.add_argument('--no-target-grounding', dest='enable_target_grounding', action='store_false')

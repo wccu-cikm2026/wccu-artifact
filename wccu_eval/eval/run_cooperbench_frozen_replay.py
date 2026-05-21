@@ -62,7 +62,7 @@ def extract_frozen_bundle(*, generation_results: str, out: str, bundle_id: str =
     return bundle
 
 
-def run_cooperbench_frozen_generation(*, input: str, out: str, bundle_out: str, provider: str = '', model: str = '', temperature: float | None = None, max_output_tokens: int = 1800, timeout_seconds: int = 180, max_parse_retries: int = 1, reasoning_effort: str = '', text_verbosity: str = '', send_temperature: bool | None = None, parallel_workers: int = 1, shuffle_cells: bool = False, max_provider_retries: int = 8, retry_backoff_base: float = 1.0, retry_backoff_max: float = 30.0, error_log: str = '', fail_fast: bool = False, certificate_guidance: str = 'guided', limit: int = 0, repetitions: int = 1, generation_condition: str = GENERATION_CONDITION, bundle_id: str = '') -> dict[str, Any]:
+def run_cooperbench_frozen_generation(*, input: str, out: str, bundle_out: str, provider: str = '', model: str = '', temperature: float | None = None, max_output_tokens: int = 1800, timeout_seconds: int = 180, max_parse_retries: int = 1, reasoning_effort: str = '', text_verbosity: str = '', send_temperature: bool | None = None, parallel_workers: int = 1, shuffle_cells: bool = False, max_provider_retries: int = 8, retry_backoff_base: float = 1.0, retry_backoff_max: float = 30.0, error_log: str = '', fail_fast: bool = False, certificate_guidance: str = 'guided', agent_model_specs: str = '', limit: int = 0, repetitions: int = 1, generation_condition: str = GENERATION_CONDITION, bundle_id: str = '') -> dict[str, Any]:
     payload = run_cooperbench_substrate(
         input=input,
         condition=generation_condition,
@@ -86,6 +86,7 @@ def run_cooperbench_frozen_generation(*, input: str, out: str, bundle_out: str, 
         error_log=error_log,
         fail_fast=fail_fast,
         certificate_guidance=certificate_guidance,
+        agent_model_specs=agent_model_specs,
     )
     bundle = make_bundle_from_generation_results(payload, out_path=(REPO_ROOT / bundle_out if not Path(bundle_out).is_absolute() else Path(bundle_out)), bundle_id=bundle_id)
     payload['frozen_bundle'] = {'path': bundle_out, 'bundle_id': bundle.get('bundle_id'), 'agent_output_count': bundle.get('agent_output_count'), 'scenario_count': bundle.get('scenario_count')}
@@ -249,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument('--bundle-out', required=True)
     gen.add_argument('--provider', default=os.environ.get('LLM_PROVIDER', 'openai'))
     gen.add_argument('--model', default=os.environ.get('LLM_MODEL', ''))
+    gen.add_argument('--agent-model-specs', default=os.environ.get('WCCU_AGENT_MODEL_SPECS', '') or os.environ.get('LLM_AGENT_MODEL_SPECS', ''), help='Per-agent provider/model routing, e.g. coop_agent_a=openai:gpt-5.4-nano,coop_agent_b=gemini:gemini-3.1-flash-lite')
     gen.add_argument('--temperature', type=float, default=None)
     gen.add_argument('--send-temperature', action='store_true', default=None)
     gen.add_argument('--max-output-tokens', type=int, default=int(os.environ.get('WCCU_COOPER_MAX_OUTPUT_TOKENS', 1800)))
@@ -297,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
             max_provider_retries=args.max_provider_retries, retry_backoff_base=args.retry_backoff_base,
             retry_backoff_max=args.retry_backoff_max, error_log=args.error_log, fail_fast=args.fail_fast,
             certificate_guidance=args.certificate_guidance, limit=args.limit, repetitions=args.repetitions,
-            generation_condition=args.generation_condition, bundle_id=args.bundle_id)
+            generation_condition=args.generation_condition, bundle_id=args.bundle_id, agent_model_specs=args.agent_model_specs)
         print(json.dumps({'ok': True, 'generation_out': args.out, 'bundle_out': args.bundle_out, 'scenario_count': payload['bundle'].get('scenario_count'), 'agent_output_count': payload['bundle'].get('agent_output_count'), 'failed_generation_count': payload['bundle'].get('failed_generation_count')}, indent=2))
         return 0
     if args.command == 'extract':
