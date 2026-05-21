@@ -1,0 +1,22 @@
+[project]
+name = "wccu-eval-artifact"
+version = "0.2.1"
+description = "Anonymous artifact for WCCU evaluation."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+wccu-experiment = "wccu_eval.eval.run_experiment:main"
+wccu-abstract-ablation = "wccu_eval.eval.run_abstract_ablation:main"
+wccu-llm-experiment = "wccu_eval.eval.run_llm_experiment:main"
+wccu-check-llm = "wccu_eval.scripts.check_llm_provider:main"
+wccu-stress = "wccu_eval.eval.run_wccu_stress:main"
+wccu-shared-context = "wccu_eval.eval.run_shared_context_workload:main"
+wccu-multi-model-obligation = "wccu_eval.eval.run_multi_model_obligation_benchmark:main"
+wccu-obligation-ablation = "wccu_eval.eval.run_wccu_obligation_ablation:main"
+wccu-naturalistic-trace = "wccu_eval.eval.run_wccu_naturalistic_trace:main"
+wccu-semantic-verifier = "wccu_eval.eval.run_wccu_semantic_verifier_eval:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
