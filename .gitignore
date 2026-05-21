@@ -1,0 +1,37 @@
+# Python/cache/build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and secrets
+.env
+.envrc
+.venv/
+venv/
+env/
+.pypirc
+
+# Generated experiment artifacts
+runs/
+results/
+analysis/
+logs/
+patches/
+*.zip
+
+# Generated data, except the small public mini sample included with the artifact
+data/*
+!data/cooperbench_mini_sample.jsonl
+!data/README.md
+
+# Editors/OS
+.DS_Store
+.idea/
+.vscode/
