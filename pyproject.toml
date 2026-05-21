@@ -1,7 +1,7 @@
 [project]
 name = "wccu-eval-artifact"
 version = "0.2.1"
-description = "Anonymous artifact for WCCU evaluation."
+description = "Anonymous evaluation artifact for Witness-Carrying Context Update experiments."
 requires-python = ">=3.11"
 dependencies = []
 

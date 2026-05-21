@@ -2,10 +2,13 @@
 set -euo pipefail
 
 # Prepare CooperBench-derived data for the WCCU artifact without making any
-# provider/API calls. The script can either download a HuggingFace dataset
-# snapshot, convert an existing local CooperBench snapshot, or reuse an already
-# converted JSONL file. It then samples a subset, creates the cross-target
+# provider/API calls. The script can download a HuggingFace dataset snapshot,
+# convert an existing local CooperBench snapshot, or reuse an already converted
+# JSONL file. It then samples a subset, creates the cross-target
 # commitment-staleness diagnostic, and writes a dataset report.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/load_wccu_env.sh"
 
 EXP_TAG="${EXP_TAG:-cooperbench_prep_seed${WCCU_COOPER_SEED:-7}}"
 SEED="${WCCU_COOPER_SEED:-7}"

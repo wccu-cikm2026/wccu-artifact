@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/load_wccu_env.sh"
 
 # True frozen replay protocol for CooperBench-derived WCCU evaluation.
 # Phase 1: call the real LLM exactly once per scenario/agent under a neutral
@@ -16,6 +18,7 @@ CONDITIONS="${WCCU_COOPER_CONDITIONS:-adaptive_wccu_execution_trace,adaptive_wcc
 GEN_CONDITION="${WCCU_FROZEN_GENERATION_CONDITION:-adaptive_wccu_execution_trace}"
 PARALLEL_WORKERS="${WCCU_COOPER_PARALLEL_WORKERS:-1}"
 CERT_GUIDANCE="${WCCU_COOPER_CERTIFICATE_GUIDANCE:-guided}"
+AGENT_MODEL_SPECS="${WCCU_AGENT_MODEL_SPECS:-${LLM_AGENT_MODEL_SPECS:-}}"
 
 mkdir -p "data/${EXP_TAG}" "results/${EXP_TAG}" "analysis/${EXP_TAG}" "logs"
 
@@ -28,7 +31,7 @@ if [[ -z "${COOPERBENCH_INPUT:-}" ]]; then
   python -m wccu_eval.scripts.convert_cooperbench_dataset \
     --input "${COOPERBENCH_SNAPSHOT}" \
     --out "${CONVERTED}" \
-    --limit "${MAX_TASKS}"
+    --max-tasks "${MAX_TASKS}"
 else
   CONVERTED="${COOPERBENCH_INPUT}"
 fi
@@ -70,6 +73,7 @@ python -m wccu_eval.eval.run_cooperbench_frozen_replay generate \
   --generation-condition "${GEN_CONDITION}" \
   --provider "${LLM_PROVIDER:-openai}" \
   --model "${LLM_MODEL:-}" \
+  --agent-model-specs "${AGENT_MODEL_SPECS}" \
   --max-output-tokens "${WCCU_COOPER_MAX_OUTPUT_TOKENS:-1800}" \
   --timeout-seconds "${WCCU_COOPER_TIMEOUT_SECONDS:-180}" \
   --max-provider-retries "${WCCU_COOPER_MAX_PROVIDER_RETRIES:-8}" \
@@ -104,6 +108,7 @@ python -m wccu_eval.eval.run_cooperbench_frozen_replay generate \
   --generation-condition "${GEN_CONDITION}" \
   --provider "${LLM_PROVIDER:-openai}" \
   --model "${LLM_MODEL:-}" \
+  --agent-model-specs "${AGENT_MODEL_SPECS}" \
   --max-output-tokens "${WCCU_COOPER_MAX_OUTPUT_TOKENS:-1800}" \
   --timeout-seconds "${WCCU_COOPER_TIMEOUT_SECONDS:-180}" \
   --max-provider-retries "${WCCU_COOPER_MAX_PROVIDER_RETRIES:-8}" \
@@ -134,6 +139,7 @@ True frozen replay run: ${EXP_TAG}
 Seed: ${SEED}
 Generation condition: ${GEN_CONDITION}
 Certificate guidance: ${CERT_GUIDANCE}
+Agent model specs: ${AGENT_MODEL_SPECS:-<single-provider>}
 Conditions replayed: ${CONDITIONS}
 Workspace generation: ${WORK_GEN}
 Workspace bundle: ${WORK_BUNDLE}
@@ -144,6 +150,6 @@ Commitment replay: ${COMMIT_REPLAY}
 Replay phase provider calls: false by construction; see frozen_replay.provider_api_called_in_replay in replay JSON.
 EOF
 
-./scripts/package_wccu_experiment_outputs.sh --tag "${EXP_TAG}" || true
+bash ./scripts/package_wccu_experiment_outputs.sh --tag "${EXP_TAG}" || true
 
 echo "Done. Inspect results/${EXP_TAG}/FROZEN_REPLAY_RUN_NOTE.txt"

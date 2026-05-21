@@ -1,22 +1,29 @@
 # WCCU Artifact
 
-This repository contains the anonymized artifact for the paper on **Witness-Carrying Context Updates (WCCUs)**.  The code implements a lightweight context store, WCCU verifier, policy selector, CooperBench-derived workload adapter, live/frozen LLM runners, and analysis scripts used to evaluate dependency-aware context updates.
+This repository contains the anonymized artifact for the paper on
+**Witness-Carrying Context Updates (WCCUs)**. The code implements a lightweight
+context store, WCCU verifier, policy selector, CooperBench-derived workload
+adapter, live/frozen LLM runners, provider-robustness runners, and analysis
+scripts used to evaluate dependency-aware context updates.
 
-The artifact is intentionally separated from the development repository. It excludes full packaged experiment-result ZIP files, raw provider logs, and development notes. Reviewers can reproduce the tables by running the scripts below; generated `data/`, `results/`, `analysis/`, and `logs/` directories are ignored by default.
+The artifact excludes full packaged experiment-result ZIP files, raw provider
+logs, development notes, and repository history. Reviewers can reproduce the
+reported tables by running the scripts below; generated `data/`, `results/`,
+`analysis/`, and `logs/` directories are ignored by default.
 
 ## Repository layout
 
 ```text
 wccu_eval/      Python package: store, verifier, policies, runners, analysis
-scripts/                     Shell entry points for offline checks and paper experiments
-data/cooperbench_mini_sample.jsonl
-                             Small sample for smoke tests and command validation
-tests/                       Unit tests for policy, WCCU, data conversion, and tables
+scripts/        Shell entry points for offline checks and paper experiments
+data/           Mini sample plus notes; full data is generated locally
+tests/          Unit tests for policy, WCCU, conversion, providers, and tables
 README_REPRODUCE.md          Detailed reproduction workflow
 .env.example                 Provider configuration template; no real keys
 ```
 
-A license file is not included in this ZIP because it should be created from the anonymous artifact-hosting account before submission.
+A license file is not included in this ZIP because it should be created from the
+anonymous artifact-hosting account before submission.
 
 ## Installation
 
@@ -26,18 +33,21 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-The package has no required third-party Python dependencies for the offline tests.
+The package has no required third-party Python dependencies for the offline
+unit tests. HuggingFace download support for CooperBench data preparation uses
+`huggingface_hub` as an optional dependency.
 
 ## Quick offline validation
-
-Run these checks before pushing the anonymous repository:
 
 ```bash
 python -m compileall wccu_eval tests scripts
 python -m unittest discover -s tests -v
+bash -n scripts/*.sh scripts/lib/*.sh
 ```
 
-Expected result: all tests pass.  This validates the verifier, policy logic, table builders, and mock/offline paths, but it does not reproduce the live LLM paper numbers.
+Expected result: all tests pass. These checks validate the verifier, policy
+logic, table builders, mixed-provider routing, shell environment loader, and
+mock/offline paths, but they do not reproduce live LLM paper numbers.
 
 ## No-API smoke run on the included mini sample
 
@@ -51,17 +61,13 @@ WCCU_COOPER_REPETITIONS=1 \
 ./scripts/run_wccu_cooperbench_derived.sh
 ```
 
-This command exercises dataset sampling, commitment-diagnostic construction, mock proposal generation, WCCU verification, and table generation without calling an external provider.  Its outputs appear under:
-
-```text
-results/artifact_mock_smoke/
-analysis/artifact_mock_smoke/
-logs/
-```
+This command exercises dataset sampling, commitment-diagnostic construction,
+mock proposal generation, WCCU verification, and table generation without
+calling an external provider.
 
 ## Live LLM configuration
 
-Copy the template and fill in exactly one provider configuration:
+Copy the template and fill in a provider configuration:
 
 ```bash
 cp .env.example .env
@@ -70,11 +76,16 @@ python -m wccu_eval.scripts.check_real_llm_config
 python -m wccu_eval.scripts.check_llm_provider --scenario high_risk_rule_change
 ```
 
-The artifact supports `openai`, `gemini`, and OpenAI-compatible endpoints.  Do not commit `.env` or provider logs.
+Shell entry points automatically load `.env` from the current directory, a
+parent directory, or the repository root. You can override the file with
+`WCCU_ENV_FILE=/path/to/.env`. The legacy `PCSE_ENV_FILE` variable is also
+accepted for compatibility. Do not commit `.env` or provider logs.
 
 ## CooperBench-derived data preparation
 
-The artifact includes the preprocessing path that turns CooperBench metadata into the workspace-contention and cross-target commitment-staleness fixtures used by the experiments. To download from HuggingFace and prepare the derived JSONL files without any LLM/provider calls:
+The artifact includes the preprocessing path that turns CooperBench metadata into
+workspace-contention and cross-target commitment-staleness fixtures. To download
+from HuggingFace and prepare derived JSONL files without provider calls:
 
 ```bash
 pip install huggingface_hub  # optional, only for HuggingFace download
@@ -87,11 +98,16 @@ export WCCU_COOPER_COMMITMENT_LIMIT=50
 ./scripts/prepare_cooperbench_data.sh
 ```
 
-The same script accepts `COOPERBENCH_SNAPSHOT=/path/to/local/snapshot` or `COOPERBENCH_INPUT=/path/to/converted.jsonl`. It writes the converted dataset, sampled subset, commitment-staleness diagnostic, and dataset report under `data/$EXP_TAG/` and `analysis/$EXP_TAG/`.
+The same script accepts `COOPERBENCH_SNAPSHOT=/path/to/local/snapshot` or
+`COOPERBENCH_INPUT=/path/to/converted.jsonl`. It writes converted data, a sampled
+workspace subset, a commitment-staleness diagnostic, and a dataset report under
+`data/$EXP_TAG/` and `analysis/$EXP_TAG/`.
 
 ## Paper-result reproduction at a glance
 
-The paper uses a two-phase live-generation/fixed-proposal replay protocol for the CooperBench-derived results.  Use the frozen replay runner for the closest reproduction path. The runner can convert/sample data itself from `COOPERBENCH_SNAPSHOT`, or it can use a converted JSONL prepared with `prepare_cooperbench_data.sh`:
+The paper uses a two-phase live-generation/fixed-proposal replay protocol for
+CooperBench-derived results. Use the frozen replay runner for the closest
+reproduction path:
 
 ```bash
 export COOPERBENCH_SNAPSHOT=/path/to/local/cooperbench_snapshot
@@ -106,7 +122,9 @@ export WCCU_COOPER_CERTIFICATE_GUIDANCE=guided
 ./scripts/run_wccu_true_frozen_replay.sh
 ```
 
-The generation phase calls the provider once per scenario/agent and stores frozen proposal bundles.  The replay phase evaluates the same proposals across commit policies without provider calls.  Key outputs:
+The generation phase calls the provider once per scenario/agent and stores
+frozen proposal bundles. The replay phase evaluates the same proposals across
+commit policies without provider calls. Key outputs include:
 
 ```text
 results/$EXP_TAG/cooperbench_workspace_frozen_bundle.json
@@ -117,14 +135,27 @@ analysis/$EXP_TAG/cooperbench_commitment_frozen_replay/cooperbench_commitment_ta
 analysis/$EXP_TAG/frozen_replay_wccu_ablation.csv
 ```
 
-See `README_REPRODUCE.md` for the full Table 3--5 workflow, including repeated seeds, provider-robustness runs, and controlled obligation diagnostics.
+For provider-robustness runs, use:
+
+```bash
+./scripts/run_wccu_gemini_only_frozen_replay.sh
+./scripts/run_wccu_mixed_provider_frozen_replay.sh
+# or the convenience wrapper:
+./scripts/run_wccu_provider_robustness_suite.sh
+```
+
+See `README_REPRODUCE.md` for the Table 3--5 workflow, including repeated seeds,
+Gemini-only and mixed-provider runs, and controlled obligation diagnostics.
 
 ## Result ZIP policy
 
-The original development package contained large result ZIP files.  They are deliberately excluded here to keep the anonymous repo lightweight and avoid leaking raw logs.  To package newly generated outputs after a run:
+The original development package contained large result ZIP files. They are
+excluded here to keep the anonymous repo lightweight and avoid leaking raw logs.
+To package newly generated outputs after a run:
 
 ```bash
 ./scripts/package_wccu_experiment_outputs.sh --tag $EXP_TAG
 ```
 
-Use `--include-source` only when preparing a standalone archival bundle, not for the anonymous GitHub repository.
+Use `--include-source` only when preparing a standalone archival bundle, not for
+the anonymous GitHub repository.

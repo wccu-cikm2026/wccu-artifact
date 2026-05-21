@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/load_wccu_env.sh"
 # Primary paper-strength WCCU experiment pipeline.
 #
 # This script makes the CooperBench-derived, live-LLM experiments the default

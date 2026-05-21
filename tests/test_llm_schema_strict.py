@@ -47,5 +47,28 @@ class LlmStrictSchemaTests(unittest.TestCase):
         self.assertNotIn('commit_mode', normalized['write_intents'][0])
 
 
+    def test_gemini_compatible_schema_strips_openai_strict_keywords(self):
+        from wccu_eval.agents.llm_output_schema import gemini_compatible_schema
+
+        schema = gemini_compatible_schema(LLM_WRITE_INTENT_JSON_SCHEMA)
+
+        def walk(node):
+            if isinstance(node, dict):
+                self.assertNotIn('additionalProperties', node)
+                self.assertNotIn('$defs', node)
+                self.assertNotIn('definitions', node)
+                self.assertNotIn('default', node)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(schema)
+        self.assertEqual(schema['type'], 'object')
+        self.assertIn('write_intents', schema['properties'])
+        self.assertIn('required', schema)
+
+
 if __name__ == '__main__':
     unittest.main()

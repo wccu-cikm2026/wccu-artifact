@@ -9,7 +9,7 @@ from wccu_eval.eval.run_llm_experiment import run_llm_experiment
 
 class EnvLoaderTests(unittest.TestCase):
     def setUp(self):
-        self._old = {k: os.environ.get(k) for k in ['PCSE_TEST_VALUE', 'PCSE_TEST_QUOTED', 'PCSE_TEST_KEEP', 'PCSE_ENV_FILE', 'LLM_PROVIDER', 'LLM_MODEL']}
+        self._old = {k: os.environ.get(k) for k in ['PCSE_TEST_VALUE', 'PCSE_TEST_QUOTED', 'PCSE_TEST_KEEP', 'WCCU_ENV_FILE', 'LLM_PROVIDER', 'LLM_MODEL']}
         for key in self._old:
             os.environ.pop(key, None)
 
@@ -41,7 +41,7 @@ class EnvLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env_path = Path(tmp) / 'custom.env'
             env_path.write_text('PCSE_TEST_VALUE=from_override\n', encoding='utf-8')
-            os.environ['PCSE_ENV_FILE'] = str(env_path)
+            os.environ['WCCU_ENV_FILE'] = str(env_path)
             self.assertEqual(find_dotenv(), env_path)
             load_dotenv()
             self.assertEqual(os.environ['PCSE_TEST_VALUE'], 'from_override')
@@ -50,7 +50,7 @@ class EnvLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env_path = Path(tmp) / '.env'
             env_path.write_text('LLM_PROVIDER=mock\nLLM_MODEL=fixture\n', encoding='utf-8')
-            os.environ['PCSE_ENV_FILE'] = str(env_path)
+            os.environ['WCCU_ENV_FILE'] = str(env_path)
             payload = run_llm_experiment(
                 scenario='high_risk_rule_change',
                 condition='adaptive_policy',

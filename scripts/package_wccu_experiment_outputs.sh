@@ -86,7 +86,7 @@ manifest = {
     'git_commit': None,
     'known_llm_config_keys_present': {
         key: bool(os.environ.get(key))
-        for key in ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_MODELS', 'PCSE_ENV_FILE']
+        for key in ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_MODELS', 'WCCU_ENV_FILE']
     },
 }
 try:
@@ -112,14 +112,19 @@ if log_dir.exists():
     for p in sorted(log_dir.glob('check_llm_provider.log')):
         paths.append(p)
 
-for rel in ['README.md', 'README_REPRODUCE.md', '.env.example', 'pyproject.toml', 'LICENSE']:
+for rel in ['README.md', 'README_REPRODUCE.md', '.env.example', 'pyproject.toml']:
     p = ROOT / rel
     if p.exists():
         paths.append(p)
 
-for rel in ['scripts/run_wccu_primary_real_llm_experiments.sh',
+for rel in ['scripts/prepare_cooperbench_data.sh',
+            'scripts/lib/load_wccu_env.sh',
+            'scripts/run_wccu_primary_real_llm_experiments.sh',
+            'scripts/run_wccu_true_frozen_replay.sh',
             'scripts/run_wccu_cooperbench_derived.sh',
-            'scripts/run_wccu_all_recommended.sh',
+            'scripts/run_wccu_gemini_only_frozen_replay.sh',
+            'scripts/run_wccu_mixed_provider_frozen_replay.sh',
+            'scripts/run_wccu_provider_robustness_suite.sh',
             'scripts/run_wccu_main_llm_obligation.sh', 'scripts/run_wccu_certificate_guidance_ablation.sh',
             'scripts/run_wccu_multi_model.sh', 'scripts/run_wccu_shared_context.sh',
             'scripts/run_wccu_offline_sanity.sh', 'scripts/run_wccu_llm_smoke.sh',

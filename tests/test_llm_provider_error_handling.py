@@ -105,3 +105,70 @@ class LlmProviderErrorHandlingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class GeminiSchemaCompatibilityTests(unittest.TestCase):
+    def test_gemini_provider_sends_sanitized_response_schema_by_default(self):
+        from wccu_eval.agents.llm_agent import call_llm_provider
+
+        captured = {}
+
+        def fake_post_json(url, **kwargs):
+            captured['url'] = url
+            captured['body'] = kwargs['body']
+            return {
+                'candidates': [
+                    {
+                        'content': {
+                            'parts': [
+                                {'text': '{"output":"ok","write_intents":[]}'},
+                            ]
+                        }
+                    }
+                ],
+                '_pcse_http': {'status_code': 200},
+            }
+
+        with patch('wccu_eval.agents.llm_agent._post_json', side_effect=fake_post_json):
+            result = call_llm_provider(
+                provider='gemini',
+                model='gemini-2.5-flash',
+                prompt='return json',
+                api_key='fake-key',
+                strict_schema=True,
+            )
+
+        schema = captured['body']['generationConfig']['responseSchema']
+
+        def walk(node):
+            if isinstance(node, dict):
+                self.assertNotIn('additionalProperties', node)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(schema)
+        self.assertEqual(result['request_options']['response_schema_mode'], 'gemini_sanitized')
+
+    def test_gemini_provider_can_disable_response_schema(self):
+        from wccu_eval.agents.llm_agent import call_llm_provider
+
+        captured = {}
+
+        def fake_post_json(url, **kwargs):
+            captured['body'] = kwargs['body']
+            return {'candidates': [{'content': {'parts': [{'text': '{"output":"ok","write_intents":[]}'}]}}]}
+
+        with patch.dict('os.environ', {'GEMINI_RESPONSE_SCHEMA_MODE': 'none'}, clear=False):
+            with patch('wccu_eval.agents.llm_agent._post_json', side_effect=fake_post_json):
+                result = call_llm_provider(
+                    provider='gemini',
+                    model='gemini-2.5-flash',
+                    prompt='return json',
+                    api_key='fake-key',
+                    strict_schema=True,
+                )
+
+        self.assertNotIn('responseSchema', captured['body']['generationConfig'])
+        self.assertEqual(result['request_options']['response_schema_mode'], 'none')
